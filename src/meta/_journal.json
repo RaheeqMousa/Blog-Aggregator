@@ -8,6 +8,13 @@
       "when": 1790077264618,
       "tag": "0000_foamy_silhouette",
       "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "7",
+      "when": 1790450834858,
+      "tag": "0001_famous_shaman",
+      "breakpoints": true
     }
   ]
 }

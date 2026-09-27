@@ -1,4 +1,4 @@
-import {handlerLogin, handlerRegister, handlerDelete, getAllUsers, registerCommand, commandsRegistry, runCommand} from "./config";
+import {handlerLogin, handlerRegister, handlerDelete, getAllUsers, handlerAggregator, handlerAddFeed, printFeedsHandler, registerCommand, commandsRegistry, runCommand} from "./config";
 
 
 async function main(){
@@ -7,6 +7,9 @@ async function main(){
 	registerCommand(register, "register", handlerRegister);
 	registerCommand(register, "reset", handlerDelete);
 	registerCommand(register, "users", getAllUsers);
+	registerCommand(register, "agg", handlerAggregator);
+	registerCommand(register, "addfeed", handlerAddFeed);
+	registerCommand(register, "feeds", printFeedsHandler);
 	
 	const args= process.argv.slice(2);
 	if(args.length==0){
