@@ -1,7 +1,9 @@
 import fs from "fs";
 import os from "os";
 import path from "path";
-import {createUser, getUser, deleteAllUsers, getUsers} from "../lib/db/queries/users";
+import {createUser, getUserByName, getUserById, deleteAllUsers, getUsers} from "../lib/db/queries/users";
+import {createFeed, getFeeds} from "../lib/db/queries/feeds";
+const { XMLParser, XMLBuilder, XMLValidator} = require("fast-xml-parser");
 
 export type Config = {
 	dbUrl: string;
@@ -58,7 +60,7 @@ export async function handlerLogin(cmdName: string, ...args: string[]){
 		throw new Error("The login handler expects a single argument, the username.");
 	}
 	const name= args[0];
-	if(!await getUser(name)){
+	if(!await getUserByName(name)){
 		throw new Error("That account does not exist");
 	}
 	
@@ -73,7 +75,7 @@ export async function handlerRegister(cmdName: string, ...args: string[]) {
 	}
 	const name = args[0];
 	
-	const existingUser= await getUser(name);
+	const existingUser= await getUserByName(name);
 	if(existingUser){
 		throw new Error(`user ${name} already exists`);
 	}
@@ -113,4 +115,117 @@ export async function getAllUsers(){
 			console.log(`* ${user.name}`);
 		}
 	}
+}
+
+type RSSFeed = {
+  channel: {
+    title: string;
+    link: string;
+    description: string;
+    item: RSSItem[];
+  };
+};
+
+type RSSItem = {
+  title: string;
+  link: string;
+  description: string;
+  pubDate: string;
+};
+
+async function fetchFeed(feedURL: string): Promise<RSSFeed>{
+	try{
+		const parser = new XMLParser({
+			processEntities: false,
+		});
+		
+		const response= await fetch(feedURL,{
+		headers:{
+			"User-Agent":"gator",
+		}
+		});
+		
+		const xmlResponse= await response.text();
+		
+		let parsed = parser.parse(xmlResponse);
+		if(!parsed.rss|| !parsed.rss.channel){
+			throw new Error("Invalid RSS feed: channel not found");
+		}
+		
+		const channel= parsed.rss.channel;
+		if(typeof channel.title!=="string" || typeof channel.link!=="string"|| typeof channel.description!=="string"){
+			throw new Error("channel metadata are missing");	
+		}
+		const title= channel.title;
+		const link= channel.link;
+		const description= channel.description;
+		
+		const items: RSSItem[]=[];
+		
+		const channelItems = Array.isArray(channel.item)? channel.item
+		  :channel.item? [channel.item]: [];
+		  
+		for(const item of channelItems){
+			if(typeof item.title==="string" && typeof item.link==="string" && typeof item.pubDate==="string" && typeof item.description==="string"){
+				items.push(
+				{
+					title: item.title,
+					link: item.link,
+					description: item.description,
+					pubDate: item.pubDate
+				});
+			}
+				
+		}
+		
+		return {
+		channel: {
+		    title: title,
+		    link: link,
+		    description: description,
+		    item: items
+		  }
+		};
+	}catch(error){
+		throw error;
+	}
+}
+
+export async function handlerAggregator():Promise<void>{
+	const feed = await fetchFeed("https://www.wagslane.dev/index.xml");
+	console.log(JSON.stringify(feed));
+}
+
+function printFeed(feed: Feed, user: User): void {
+	console.log(`Feed:\nID: ${feed.id}\nName: ${feed.name}\nURL: ${feed.url}\nUser Id: ${user.id}\n User's Name: ${user.name}`);
+
+}
+
+export async function handlerAddFeed(cmdName: string, ...args: string[]) {
+	if (args.length < 2) {
+		throw new Error("addfeed command requires a name and URL");
+	}
+
+	const name = args[0];
+	const url = args[1];
+
+	const config = readConfig();
+	const user = await getUserByName(config.currentUserName);
+
+	if (!user) {
+		throw new Error("Current user does not exist");
+	}
+
+	const feed = await createFeed(name, url, user.id);
+
+	printFeed(feed, user);
+}
+
+export async function printFeedsHandler(){
+	const feeds= await getFeeds();
+	for(let feed of feeds){
+		const user= await getUserById(feed.userId);
+		printFeed(feed,user);
+	}
+
 }
