@@ -1,6 +1,6 @@
 import { db } from "..";
 import { posts, feeds, feedFollows } from "../../../src/schema";
-import { eq, sql, desc } from "drizzle-orm";
+import { eq, sql, desc,asc } from "drizzle-orm";
 
 export async function createPost(title:string, url: string, description: string, publishedAt: Date, feedId:string){
 	const [post]= await db
@@ -18,7 +18,8 @@ export async function createPost(title:string, url: string, description: string,
 	return post;
 }
 
-export async function getPostsForUser(userId:string, limit:number){
+export async function getPostsForUser(userId:string, limit:number, offset: number,
+  sort: "newest" | "oldest"){
 	return await db
 		.select({
 			id: posts.id,
@@ -35,5 +36,9 @@ export async function getPostsForUser(userId:string, limit:number){
 		.innerJoin(feedFollows, eq(feeds.id, feedFollows.feedId))
 		.where(eq(feedFollows.userId, userId))
 		.orderBy(desc(posts.publishedAt))
-		.limit(limit);
+		.orderBy(
+			sort === "newest"? desc(posts.publishedAt): asc(posts.publishedAt)
+		)
+		.limit(limit)
+		.offset(offset);
 }

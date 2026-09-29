@@ -361,20 +361,45 @@ function parseDuration(durationStr: string):number{
 
 export async function browseHandler(cmdName, user:User, ...args:string[]): Promise<void>{
 	let limit=2;
+	let page = 1;
+	let sort: "newest" | "oldest" = "newest";
+	let i=0;
 	
-	if(args.length>1){
-		throw new Error("Browse command needs just one argument");
-	}
-	
-	if (args.length === 1) {
-		limit = Number(args[0]);
-
+	if (args[i] && !args[i].startsWith("--")) {
+    		limit = Number(args[i]);
 		if (!Number.isInteger(limit) || limit <= 0) {
 			throw new Error("limit must be a positive integer");
 		}
-    }
+		i++;
+	}
+
+	if (args[i] && !args[i].startsWith("--")) {
+		page = Number(args[i]);
+
+		if (!Number.isInteger(page) || page <= 0) {
+			throw new Error("page must be a positive integer");
+		}
+		i++;
+	}
+
+	if (args[i] === "--sort") {
+		const sortValue = args[i + 1];
+
+		if (sortValue !== "newest" && sortValue !== "oldest") {
+			throw new Error("sort must be newest or oldest");
+		}
+
+		sort = sortValue;
+		i+=2;
+	}
 	
-	const posts= await getPostsForUser(user.id, limit);
+	if (i < args.length) {
+		throw new Error(`Unknown argument: ${args[i]}`);
+	}
+  
+	const offset = (page - 1) * limit;
+	
+	const posts= await getPostsForUser(user.id, limit, offset, sort);
 	
 	for(const post of posts){
 		console.log(`Title: ${post.title}`);
