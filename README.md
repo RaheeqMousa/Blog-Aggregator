@@ -9,7 +9,7 @@ Gator lets you create users, add feeds, follow feeds, periodically fetch posts, 
 - Add RSS feeds
 - Follow and unfollow feeds
 - Periodically aggregate RSS feeds
-- Browse collected posts
+- Browse collected posts with sorting and pagination
 - PostgreSQL database persistence
 
 ## Tech Stack
@@ -27,8 +27,8 @@ Before running this project, make sure you have
 - PostgreSQL
 
 Check existence using:
-node --version
-npm --version
+node --version<br>
+npm --version<br>
 psql --version
 
 ## Installation
@@ -131,13 +131,40 @@ Stops following an RSS feed.
 npm run start unfollow https://news.ycombinator.com/rss
 ```
 ### browse
-Displays the latest posts from feeds followed by the current user.
-By default, it displays 2 posts.
+Displays posts from feeds followed by the current user.
+By default, it displays the 2 newest posts.
 ```bash
-npm run start browse
+npm run start -- browse
 ```
+
+The argument order is:
+```text
+browse [limit] [page] [--sort newest|oldest]
+```
+All arguments are optional.
 
 You can specify the number of posts to display:
 ```bash
-npm run start browse 10
+npm run start -- browse 10
+```
+
+You can also use pagination:
+```bash
+npm run start -- browse 10 1
+npm run start -- browse 10 2
+npm run start -- browse 10 3
+```
+The first argument is the number of posts per page, and the second argument is the page number.
+
+You can sort posts by publication date:
+```bash
+npm run start -- browse --sort newest
+npm run start -- browse --sort oldest
+```
+The available sort options are `newest` and `oldest`
+
+Sorting can also be combined with the page and limit:
+```bash
+npm run start -- browse 10 2 --sort newest
+npm run start -- browse 10 2 --sort oldest
 ```
