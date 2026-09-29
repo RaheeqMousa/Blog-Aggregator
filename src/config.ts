@@ -2,7 +2,9 @@ import fs from "fs";
 import os from "os";
 import path from "path";
 import {createUser, getUserByName, getUserById, deleteAllUsers, getUsers} from "../lib/db/queries/users";
-import {createFeed, getFeeds} from "../lib/db/queries/feeds";
+import {createFeed, getFeeds, getFeedByUrl, getNextFeedToFetch, markFeedFetched} from "../lib/db/queries/feeds";
+import {createFeedFollow, getFeedFollowsForUser, deleteFeedFollow} from "../lib/db/queries/feedFollows"
+import {createPost, getPostsForUser} from "../lib/db/queries/posts"
 const { XMLParser, XMLBuilder, XMLValidator} = require("fast-xml-parser");
 
 export type Config = {
@@ -11,6 +13,8 @@ export type Config = {
 };
 
 type CommandHandler= (cmdName:string, ...args: string[]) => Promise<void>;
+
+type UserCommandHandler= (cmdName:string, user:User, ...args:string[]) => Promise<void>;
 
 export type CommandsRegistry= Record<string, CommandHandler>
 
@@ -55,7 +59,7 @@ export function setUser(cfg:Config, username:string): void{
 	writeConfig(cfg);
 }
 
-export async function handlerLogin(cmdName: string, ...args: string[]){
+export async function loginHandler(cmdName: string, ...args: string[]){
 	if(args.length===0){
 		throw new Error("The login handler expects a single argument, the username.");
 	}
@@ -69,7 +73,7 @@ export async function handlerLogin(cmdName: string, ...args: string[]){
 	console.log("User has been set");
 }
 
-export async function handlerRegister(cmdName: string, ...args: string[]) {
+export async function registerHandler(cmdName: string, ...args: string[]) {
 	if (args.length === 0) {
 		throw new Error("register command requires a username");
 	}
@@ -101,7 +105,7 @@ export async function runCommand(registry: CommandsRegistry, cmdName: string, ..
 	await handler(cmdName, ...args);
 }
 
-export async function handlerDelete(){
+export async function deleteHandler(){
 	await deleteAllUsers();
 }
 
@@ -191,17 +195,53 @@ async function fetchFeed(feedURL: string): Promise<RSSFeed>{
 	}
 }
 
-export async function handlerAggregator():Promise<void>{
-	const feed = await fetchFeed("https://www.wagslane.dev/index.xml");
-	console.log(JSON.stringify(feed));
+export async function aggregatorHandler(cmdName:string, ...args: string[]):Promise<void>{
+	if (args.length !== 1) {
+		throw new Error("agg command requires a time_between_reqs argument");
+	}
+
+	const timeBetweenRequests = parseDuration(args[0]);
+
+	console.log(`Collecting feeds every ${args[0]}`);
+
+	const handleError = (error: unknown) => {
+  		console.error(error);
+	};
+
+	scrapeFeeds().catch(handleError);
+
+	const interval = setInterval(() => {
+  		scrapeFeeds().catch(handleError);
+	}, timeBetweenRequests);
+	
+	await new Promise<void>((resolve) => {
+	  	process.on("SIGINT", () => {
+	  		console.log("Shutting down feed aggregator...");
+	  		clearInterval(interval);
+	  		resolve();
+	  	});
+	});
+}
+
+export function middlewareLoggedIn(handler:UserCommandHandler){
+	return async (cmdName: string, ...args: string[]) => {
+		const config = readConfig();
+    		const user = await getUserByName(config.currentUserName);
+
+    		if (!user) {
+      			throw new Error("Current user does not exist");
+    		}
+
+    		await handler(cmdName, user, ...args);
+  	};
 }
 
 function printFeed(feed: Feed, user: User): void {
-	console.log(`Feed:\nID: ${feed.id}\nName: ${feed.name}\nURL: ${feed.url}\nUser Id: ${user.id}\n User's Name: ${user.name}`);
+	console.log(`Feed:\nID: ${feed.id}\nName: ${feed.name}\nURL: ${feed.url}\nUser Id: ${user.id}\nUser's Name: ${user.name}`);
 
 }
 
-export async function handlerAddFeed(cmdName: string, ...args: string[]) {
+export async function addFeedHandler(cmdName: string, user:User, ...args: string[]) {
 	if (args.length < 2) {
 		throw new Error("addfeed command requires a name and URL");
 	}
@@ -210,15 +250,11 @@ export async function handlerAddFeed(cmdName: string, ...args: string[]) {
 	const url = args[1];
 
 	const config = readConfig();
-	const user = await getUserByName(config.currentUserName);
-
-	if (!user) {
-		throw new Error("Current user does not exist");
-	}
 
 	const feed = await createFeed(name, url, user.id);
+	const feedFollow= await createFeedFollow(user.id, feed.id);
 
-	printFeed(feed, user);
+	console.log(`User ${feedFollow.userName} is now following ${feedFollow.feedName}`,);
 }
 
 export async function printFeedsHandler(){
@@ -228,4 +264,123 @@ export async function printFeedsHandler(){
 		printFeed(feed,user);
 	}
 
+}
+
+export async function followFeedHandler(cmdName, user:User, ...args: string[]){
+	if(args.length!=1){
+		throw new Error("The follow command requires a url");
+	}
+	
+	const url = args[0];
+	const config= readConfig();
+	
+	const feed = await getFeedByUrl(url);
+	if (!feed) {
+		throw new Error("Feed does not exist");
+	}
+
+	const feedFollow= await createFeedFollow(user.id, feed.id);
+	
+	console.log(`User ${user.name} is now following ${feed.name}`)
+}
+
+export async function followingHandler(cmdName, user:User, ...args: string[]){
+	const config= readConfig();
+	
+	const follows= await getFeedFollowsForUser(user.id);
+	console.log(`User ${user.name} is following:`);
+	
+	for (const follow of follows) {
+		console.log(`* ${follow.feedName}`);
+	}
+}
+
+export async function unfollowFeedHandler(cmdName:string, user:User, ...args:string[]){
+	if (args.length !== 1) {
+    		throw new Error("The unfollow command requires a url");
+  	}
+
+  	const url = args[0];
+
+  	await deleteFeedFollow(user.id, url);
+
+  	console.log(`User ${user.name} has unfollowed ${url}`);
+}
+
+export async function scrapeFeeds(){
+	const feed = await getNextFeedToFetch();
+
+	if (!feed) {
+		throw new Error("No feeds available");
+	}
+
+  	console.log(`Fetching feed: ${feed.name}`);
+
+  	const rssFeed = await fetchFeed(feed.url);
+
+	await markFeedFetched(feed.id);
+
+	for (const item of rssFeed.channel.item) {
+		const publishedAt= new Date(item.pubDate);
+		
+		await createPost(
+			item.title,
+			item.link,
+			item.description,
+			publishedAt,
+			feed.id,
+		);
+  	}
+}
+
+function parseDuration(durationStr: string):number{
+	const regex= /^(\d+)(ms|s|m|h)$/;
+	const match= durationStr.match(regex);
+	
+	if(!match){
+		throw new Error("Invalid duration format");
+	}
+	
+	const amount = Number(match[1]);
+	const unit = match[2];
+
+	switch (unit) {
+		case "ms":
+ 			return amount;
+ 		case "s":
+      			return amount * 1000;
+    		case "m":
+			return amount * 60 * 1000;
+		case "h":
+			return amount * 60 * 60 * 1000;
+		default:
+			throw new Error("Invalid duration unit");
+	}
+
+}
+
+export async function browseHandler(cmdName, user:User, ...args:string[]): Promise<void>{
+	let limit=2;
+	
+	if(args.length>1){
+		throw new Error("Browse command needs just one argument");
+	}
+	
+	if (args.length === 1) {
+		limit = Number(args[0]);
+
+		if (!Number.isInteger(limit) || limit <= 0) {
+			throw new Error("limit must be a positive integer");
+		}
+    }
+	
+	const posts= await getPostsForUser(user.id, limit);
+	
+	for(const post of posts){
+		console.log(`Title: ${post.title}`);
+		console.log(`URL: ${post.url}`);
+		console.log(`Published: ${post.publishedAt}`);
+		console.log(`Description: ${post.description}`);
+		console.log();
+	}
 }

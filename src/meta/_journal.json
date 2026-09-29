@@ -15,6 +15,48 @@
       "when": 1790450834858,
       "tag": "0001_famous_shaman",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1790510914695,
+      "tag": "0002_blue_pete_wisdom",
+      "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "7",
+      "when": 1790602123636,
+      "tag": "0003_yielding_peter_parker",
+      "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1790616009521,
+      "tag": "0004_high_bruce_banner",
+      "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1790677452420,
+      "tag": "0005_mysterious_lifeguard",
+      "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1790679257157,
+      "tag": "0006_bumpy_sue_storm",
+      "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1790681718587,
+      "tag": "0007_elite_magma",
+      "breakpoints": true
     }
   ]
 }
